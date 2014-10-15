@@ -1,0 +1,353 @@
+%\VignetteEngine{knitr::knitr}
+%\VignetteIndexEntry{metaMix User Guide}
+
+\documentclass[a4paper]{article}
+\usepackage[margin=1.5cm,includefoot,footskip=30pt]{geometry}
+
+\usepackage[colorlinks=true]{hyperref}
+
+
+\usepackage{fullpage}
+
+\title{metaMix user guide}
+\author{Sofia Morfopoulou}
+\date{\today}
+
+
+\begin{document}
+\maketitle
+
+%\tableofcontents
+%\newpage
+
+<<setup, echo=FALSE>>=
+options(tidy=TRUE, width=80)
+@
+
+
+\section{Installation}
+
+You will need to have openMPI (Message Passage Interface) installed to be able to install the R package \verb!Rmpi!, which provides the interface to openMPI. 
+\verb!Rmpi! is one of the package dependencies, along with \verb!data.table!, \verb!Matrix!, \verb!gtools! and \verb!ggplot2!.
+You can check whether you have openMPI installed using the command \verb!mpirun! and you can find more information here:\\
+\url{http://www.open-mpi.org/software/ompi}
+
+
+
+\section{Introduction}
+
+metaMix is a tool designed to identify the set of species most likely to be present in a metagenomic community.   
+metaMix also estimates their relative abundances  and resolves ambiguous assignments by considering all reads simultaneously.
+
+metaMix considers the competing  models that could accommodate our observed data, i.e the BLASTx results and compares them. 
+The different mixture models represent different sets of species being present in the sample. 
+The method is structured in the following manner: in the first instance we assume that a set of species is present in the sample and we estimate the parameters given the data. 
+At the next step, we randomly add or remove a species and fit this new model. 
+The process is iterated in order to explore the model state space and we record the MCMC choices over time.
+Additionally we parallelise the process, running $n$ (usually 12) parallel chains, allowing exchange of information between them.
+Using this Bayesian Mixture Model framework, we finally perform model averaging in order to account for model uncertainty.
+
+The initial motivation for developing metaMix was  the analysis of deep transcriptome sequencing datasets, with a particular focus on viral pathogen detection.
+However the ideas are applicable more generally to all types of metagenomics mixtures.
+
+Some bionformatics processing is required prior to using metaMix.  
+This is usually filtering out the low quality, duplicate and host reads. 
+The user may wish to attempt some assembly step as well prior to resolving the mixture; however this step is not necessary. 
+More importantly, the similarities between the short reads (and/or contigs) and a reference database must be provided.   
+At the end of the analysis, the user will obtain a probabilistic summary of present species and some supporting plots.
+
+
+The  implementation of the ideas described here is computationally intensive and requires a supercomputer. 
+However for the purposes of this tutorial, we demonstrate the usage on a toy example and all the steps can be performed on a single machine.
+
+
+%\newpage
+
+\section{Tutorial}
+\subsection*{Step1}
+The work described here is similarity-based, therefore the starting point is to  obtain the sequence similarity between a query and a target sequence.
+The obvious choice for this is BLAST. 
+Both nucleotide and amino acid similarities are supported. 
+We  demonstrate the use of metaMix working with the latter, i.e we have used BLASTx.
+
+\begin{description}
+\item[Default BLAST output] 
+
+The default output tabular file is supported,  obtained using \verb!-outfmt 6! in the BLAST command.
+
+<<engine='bash', eval=FALSE, echo=TRUE>>=
+  blastx -db referenceDB -query input.fa  -outfmt 6  -max_target_seqs 10
+@ 
+
+
+The default output file has the following fields:\\
+\verb!Query ID!, \verb!Subject ID!, \verb!% Identity!, \verb!Alignment Length!, \verb!Mismatches!, \verb!Gap Openings!, \verb!Query Start!, \verb!Query End!, \verb!Subject Start!, \verb!Subject End!, \verb!E-value!, \verb!Bit Score!.
+
+
+<<echo=TRUE, eval=TRUE>>=
+library(metaMix)
+###Location of input files.
+datapath <- system.file("extdata", package="metaMix")
+blastOut.default<-file.path(datapath, "blastOut_default.tab")
+read.table(blastOut.default, nrows=2, sep="\t")
+@ 
+
+metaMix needs information on the read lengths as well as a file mapping the gi identifiers to the taxon identifiers. These are not included in the default output of BLAST, therefore should be provided as additional arguments.
+
+<<echo=TRUE, eval=TRUE>>=
+read.lengths<-file.path(datapath, "read_lengths.tab")
+read.weights<-file.path(datapath, "read_weights.tab")
+taxon.file<-file.path(datapath, "gi_taxid_prot_example.dmp")
+
+read.table(read.lengths, nrows=2, sep="\t")
+read.table(read.weights, nrows=2, sep="\t")
+read.table(taxon.file, nrows=2, sep="\t")
+@ 
+
+
+\item[Custom BLAST output] 
+
+Alternatively, metaMix accepts a custom BLAST output file that has already incorporated the read lengths and the taxon identifiers.
+At the moment, only the output that is produced by the following command is supported:
+
+<<engine='bash', eval=FALSE, echo=TRUE>>=
+    blastx -db referenceDB -query input.fa -max_target_seqs 10
+  -outfmt "6 qacc qlen sacc slen mismatch bitscore length pident evalue staxids"
+@ 
+
+Therefore the fields are \\ \verb!Query ID!, \verb!Query Length!, \verb!Subject ID!, \verb!Subject Length!, \verb!Mismatches!,   \verb!Bit Score!,  \verb!Alignment Length!, \verb!%Identity!,  \verb!E-value!, \verb!Taxon ID!.
+
+<<echo=TRUE, eval=TRUE>>=
+blastOut.custom<-file.path(datapath, "blastOut_custom.tab")
+read.table(blastOut.custom, nrows=2, sep="\t")
+@ 
+\end{description} \vspace{5mm}
+The first step in the analysis is to compute the read-species generative probabilities based on  the BLASTx data. 
+We achieve this by using the \verb!generative.prob()! function. 
+In this instance we will work with the custom BLAST output file.
+
+  
+<<echo=TRUE>>=
+  step1 <-generative.prob(blast.output.file = blastOut.custom,
+                          contig.weight.file=read.weights,
+                          blast.default=FALSE,
+                          outDir=NULL)
+@ 
+
+where \verb!blast.default! denotes whether we are working with the BLAST default output (TRUE) or with the specified above custom output (FALSE). 
+
+\verb!blast.output.file! is the  tabular BLASTx output file. 
+
+If we are working with unassembled reads, we can omit the argument \verb!contig.weight.file! as the weight is set by default to be 1, same for all reads. 
+However if an assembly step has been performed, as in this example, we need to provide information on the number of reads that make up each contig.   
+This will be a two column tab-separated file, where the first column is  the contig identifier and the second the number of reads. 
+
+Finally \verb!outDir! is the  directory where the results are written and where an object from each step is saved. When it is set to NULL no objects will be saved. 
+
+\vspace{3mm}
+\emph{NOTE}: If we were using the default BLAST output the command would look like so:  
+
+<<echo=TRUE, eval=FALSE>>=
+step1 <-generative.prob(blast.output.file = blastOut.default,
+                        read.length.file=read.lengths,
+                        contig.weight.file=read.weights,
+                        gi.taxon.file = taxon.file,
+                        blast.default=TRUE,
+                        outDir=NULL)
+@ 
+
+The information missing from the BLAST file is now provided with two extra arguments:
+\verb!read.length.file! can be either the file mapping each read to its sequence length or a numerical value, representing the average read length (default value=100).
+
+\verb!'gi_taxid_prot.dmp'!  is a taxonomy file, mapping each protein gi identifier to the corresponding taxon identifier.  
+It can  be downloaded from \\ \url{ftp://ftp.ncbi.nih.gov/pub/taxonomy/gi_taxid_prot.dmp.gz}  \\
+
+
+
+The function \verb!generative.prob! creates a list of five elements. 
+One of these is a sparse matrix \verb!pij.sparse.mat! where each row corresponds to one read and each column to a species. The value of the cell is the generative probability $p_{ij}$.  
+Additionally a \verb!data.frame! with all the species that correspond to the proteins in the BLASTx output file.
+Finally the \verb!read.weights!, \verb!gen.prob.unknown! and \verb!outDir! are the other three elements of the list \verb!step1!,  carried forward to be used in the second step.
+
+
+<<echo=TRUE>>=
+###The resulting list consists of five elements
+names(step1)
+
+### The sparse matrix of generative probs. 
+step1$pij.sparse.mat[1:5,c("374840",  "258", "unknown")]
+
+### There are that many potential species in the sample:
+nrow(step1$ordered.species)
+@
+
+\subsection*{Step2}
+Having the generative probabilities from the previous step (generative.prob), we could proceed directly with the PT MCMC to explore the state space. 
+However, typically the number of all potential species $S$ is large.  We are therefore interested in reducing the size of the species pool, from the thousands to the low hundreds. 
+
+In this simple example we have only 224  organisms but still we  attempt to reduce it for demonstrating the usage of the function.
+We achieve this by fitting a mixture model with 224 categories, considering all 224 potential species simultaneously. 
+Post fitting, we retain only the species categories that are not empty, that is the categories that have at least one read assigned to them.
+The required argument is simply the list created in the first step, i.e using the \verb!generative.prob! function. 
+
+
+<<echo=TRUE, eval=FALSE>>=
+step2 <- reduce.space(step1=step1)
+@ 
+
+Alternatively, if the list created in the first step was saved in a ``step1.RData'' file,  a character string containing the path to the file could be provided, i.e
+
+<<echo=TRUE, eval=FALSE>>=
+step2 <- reduce.space(step1="/pathtoFile/step1.RData")
+@ 
+
+
+To speed up computations, we have already performed step2 and saved the output which we will now load:
+
+<<echo=FALSE, eval=TRUE>>=
+data(step2)
+@
+
+
+<<echo=TRUE>>=
+##These are the elements of the step2 list.
+names(step2)
+
+## After this approximating step, there are now that many potential species in
+##the sample:
+nrow(step2$ordered.species)
+
+## And these are:
+step2$ordered.species
+@ 
+ 
+We see that even though we started with  224 potential organisms, we reduced the species space  to 7. 
+Bear in mind that this a simple example and the usual scenario is to move from  thousands of species to  hundreds.
+
+
+\subsection*{Step3}
+  In this step, the different models are considered and compared.
+The space exploration by the parallel tempering MCMC is implemented by the function \verb!parallel.temper!:
+
+
+<<echo=TRUE, eval=FALSE>>=
+step3<-parallel.temper(step2=step2)
+@ 
+
+The required argument is simply the list created in the second step (or the character string containing the path to the respective .RData file where the step2 list was saved to), i.e using the \verb!reduce.space! function.
+
+An important optional argument of this function is \verb!readSupport!. 
+For the type of data we analyse (i.e from mostly sterile human tissues) we expect that parsimonious models with a limited number of species are more likely. 
+Therefore our default model prior uses a penalty limiting the number of species in the model.
+We approximate this penalty factor based on \verb!readSupport!, which represents the species read support required from the user in order to believe in the presence of a species in the sample.
+The default value is 10 and it is suitable for when we want to detect rare signal. 
+We have found this value to work well in most human RNA-seq datasets.
+
+Same as before, we have already performed step3 and saved the output which we  now load:
+
+
+<<echo=FALSE, eval= TRUE >>=
+data(step3)
+@ 
+
+<<echo=TRUE>>=
+##These are the elements of the step3 list.
+names(step3)
+@ 
+
+<<echo=TRUE>>=
+## Steps MCMC took during some iterations.
+step3$result$slave1$record[10:15,]
+@ 
+
+For each parallel chain, the MCMC trajectory has been recorded.
+There is information on what steps were proposed, which were accepted or rejected throughout the iterations. 
+For example at iteration 10, removing species 645687 was proposed but not accepted, as denoted by the 1 in the column 645687.
+
+We can also see that between iterations 13 and 14 an exchange of the sets of species between Chain 1 and Chain 2 occurred.  
+At iter. 13 species 2 was present, while at the next one, it no longer is there. That means that the attempt at swapping the values of the two neighboring chains was successful. 
+This information is also recorded, i.e how many swaps were attempted and how many accepted.
+
+\subsection*{Step4}
+
+ Having explored the different possible models, the final step is to perform  model averaging. 
+We study the MCMC choices for Chain 1 and produce a probabilistic summary for the presence of the species.
+  
+<<echo=TRUE>>=
+## Location of the taxonomy names file.
+taxon.file<-file.path(datapath, "names_example.dmp")
+
+step4<-bayes.model.aver(step2=step2,
+                        step3=step3,
+                        taxon.name.map=taxon.file)
+			@
+ 
+The required arguments are the lists created in the second and third steps, i.e using the \verb!reduce.space! and the \verb!parallel.temper! functions.
+Additionally the taxonomy names file 'names.dmp', which can be downloaded and extracted from \url{ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz}
+
+<<echo=TRUE>>=
+##These are the elements of the step4 list.
+names(step4)
+
+##This is the species summary
+print(step4$presentSpecies.allInfo)
+@
+
+We find four species with a posterior probability greater than 0.9 (default value), plus the unknown category.
+
+Finally we also produce log-likelihood traceplots for Chain 1.
+We discard the first 20\% of the iterations as burn-in and we look at the mixing of the chain.
+
+Due to having very few iterations for this toy example, the produced traceplot would not be representative or insightful. 
+Instead we present below the log-likelihood traceplot from a real dataset.
+
+
+<<echo=FALSE, eval=TRUE, out.width='.6\\linewidth', out.height='.6\\linewidth', fig.align='center'>>=
+PTastro<-file.path(datapath, "PT_plots.RData")
+load(PTastro)
+nIter<- length(PTresult$result$slave1$record[,'logL'])
+plot(PTresult$result$slave1$record[(nIter/5):nIter,'logL'], type='l', col='dodgerblue', xlab='Last 80% of iterations', ylab='Log-likelihood', main='Parallel Tempering - Coldest Chain', lwd=1.5)
+
+@
+ 
+
+\section{Submit jobs on cluster compute servers}
+In order to run steps 1, 2 and 4 of metaMix (i.e \verb!generative.prob!, \verb!reduce.space!, \verb!bayes.model.aver!) efficiently, these should be submitted as jobs to a compute cluster. 
+In our experience,  4G of memory, 1 hour of wall clock time and 1 processor should be plenty.
+
+In order to run the parallel tempering efficiently,  we need at least 12 parallel chains, each with at least 1G-2G of RAM. 
+The wall clock time depends on how many iterations will be performed. 
+Also a larger number of reads mean that the computations will become slower. 
+We typically ask for 12 hours to be on the safe side.
+
+
+
+This is a sample submission script for the third step.
+It requests 12 processors on 1 node for 12 hours.
+
+\begin{verbatim}
+#!/bin/bash
+#$ -S /bin/bash
+#$ -o cluster/out
+#$ -e cluster/error
+#$ -cwd
+#$ -pe smp 12
+#$ -l tmem=1.1G,h_vmem=1.1G
+#$ -l h_rt=12:00:00
+#$ -V
+#$ -R y
+
+mpirun -np 1 R-3.0.1/bin/R --slave CMD BATCH --no-save --no-restore step3.R
+\end{verbatim}
+
+in step3.R,  we simply load the object produced from \verb!reduce.space! and then call \verb!generative.prob!.
+Each chain will produce a log file that will be printed in your working directory
+
+
+\section{Technical information about the R session}
+
+<<echo=TRUE>>=
+sessionInfo()
+@ 
+
+\end{document}
