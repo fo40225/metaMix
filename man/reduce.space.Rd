@@ -4,10 +4,10 @@
 \alias{reduce.space.explicit}
 \title{Reduce the space of potential species by fitting the mixture model with  all potential species as categories}
 \usage{
-reduce.space(step1, read.cutoff = 1, EMiter = 250)
+reduce.space(step1, read.cutoff = 1, EMiter = 500, seed = 1)
 
 reduce.space.explicit(pij.sparse.mat, ordered.species, read.weights, outDir,
-  gen.prob.unknown, read.cutoff = 1, EMiter = 500)
+  gen.prob.unknown, read.cutoff = 1, EMiter = 500, seed = 1)
 }
 \arguments{
 \item{step1}{list. The output from generative.prob() (or generative.prob.nucl(), that is the first step of the pipeline. Alternatively, it can be a character string containing the path name of the ".RData" file where step1 list was saved.}
@@ -15,6 +15,8 @@ reduce.space.explicit(pij.sparse.mat, ordered.species, read.weights, outDir,
 \item{read.cutoff}{numeric vector. This is the used to decide which species to retain for the subsequent MCMC exploration. Default value is 1, i.e keep all species that have at least one read assigned to them. If this number is still in the low thousands as opposed to the low hundreds the user may set this to a higher number, such as 10.}
 
 \item{EMiter}{Number of iterations for the EM algorithm. Default value is 500.}
+
+\item{seed}{Optional argument that sets the random seed (default is 1) to make results reproducible.}
 
 \item{pij.sparse.mat}{sparse Matrix of generative probabilities computed by generative.prob() /  generative.prob.nucl().}
 

@@ -14,7 +14,7 @@ NULL
 #' @param gi.taxon.file For generative.prob() this would be the 'gi_taxid_prot.dmp' taxonomy file, mapping each protein gi identifier to the corresponding taxon identifier. It can be downloaded from \url{ftp://ftp.ncbi.nih.gov/pub/taxonomy/gi_taxid_prot.dmp.gz} . For generative.prob.nucl() this would be the 'gi_taxid_nucl.dmp' taxonomy file, mapping each nucleotide gi identifier to the corresponding taxon identifier. It an be downloaded from \url{ftp://ftp.ncbi.nih.gov/pub/taxonomy/gi_taxid_nucl.dmp.gz}. 
 #' @param gen.prob.unknown User-defined generative probability for unknown category. Default value for generative.prob() is 1e-06, while for generative.prob.nucl() is 1e-20.
 #' @param outDir Output directory.
-#' @param blast.default logical. Is the input the default blast output tabular format? Default value is TRUE
+#' @param blast.default  logical. Is the input the default blast output tabular format? Default value is TRUE. That means that the BLAST output file needs to have the following fields:Query id, Subject id, percent identity, alignment length, mismatches, gap openings, query start, query end, subject start, subject end, e-value, bit score.  Alternatively we can use the 'blast.default=FALSE' option, providing a custom blast output that has been produced using the option -outfmt '6 qacc qlen sacc slen stitle bitscore length pident evalue staxids'.
 #' @return step1: A list with five elements. The first one (pij.sparse.mat) is a sparse matrix with the generative probability between each read and each species. The second (ordered.species) is matrix containing all the potential species as recorded by BLAST, ordered by the number of reads. The third one (read.weights) is a data.frame mapping each contig to a weight which is essentially the number of reads that were used to assemble it. For unassembled reads the weight is equal to one. The fourth one is the generative probability for the unknown category (gen.prob.unknown), to be used in all subsequent steps. Finally we also record the output directory (outDir) where the results will be stored.
 #' @keywords generative.prob
 #' @export generative.prob
@@ -289,7 +289,7 @@ generative.prob = function(blast.output.file=NULL, read.length.file=80, contig.w
 #' @rdname generative.prob
 #' @title generative.prob.nucl
 #' @description generative.prob.nucl()  for when we have nucleotide similarity, i.e we have performed BLASTn.
-#' @param genomeLength This is applicable only for generative.prob.nucl() . It is a file mapping each genome/nucleotide to its respective length. The file must be tab seperated and the first column the nucleotide gi identifier and the second the corresponding sequence length. It will be used to correct the Poisson probabilities between each read and genome.
+#' @param genomeLength This is applicable only for generative.prob.nucl() . It is a file mapping each genome/nucleotide to its respective length. The file must be tab seperated and the first column the nucleotide gi identifier (integer) and the second the corresponding sequence length (integer). It will be used to correct the Poisson probabilities between each read and genome.
 #' @keywords generative.prob.nucl
 #' @export generative.prob.nucl
 #' @import Matrix data.table
@@ -464,8 +464,8 @@ generative.prob.nucl = function(blast.output.file=NULL, read.length.file=80, con
       }  else if (ncol(check.output)==10){
 
         
-        blast.output.length<-fread(input=blast.output.file, sep="\t", header=F, select=c(1,2, 4, 5, 7, 8, 10))
-        setnames(x=blast.output.length, old=c("read", "length", "genome.length", "mismatch", "aln",  "ident", "taxonID"))
+        blast.output.length<-fread(input=blast.output.file, sep="\t", header=F, select=c(1,2, 4, 7, 8, 10))
+        setnames(x=blast.output.length, old=c("read", "length", "genome.length",  "aln",  "ident", "taxonID"))
         
       } else {
         stop("Please provide the output file from BLASTx. The default tabular format is accepted, using the '-outfmt 6' flag in the BLASTx command.")
@@ -488,9 +488,9 @@ generative.prob.nucl = function(blast.output.file=NULL, read.length.file=80, con
     }
         
 
-    mismatchNew<-ifelse(blast.output.length[["length"]]>=200, blast.output.length[["mismatch"]], blast.output.length[["length"]]-(blast.output.length[["ident"]]* blast.output.length[["aln"]])/100)
+    blast.output.length$mismatch<-ifelse(blast.output.length[["length"]]>=200, (1-blast.output.length[["ident"]]/100)*blast.output.length[["aln"]], blast.output.length[["length"]]-(blast.output.length[["ident"]]* blast.output.length[["aln"]])/100)
 
-    blast.output.length$mismatch<-mismatchNew
+#    blast.output.length$mismatch<-mismatchNew
     
     blast.length.weight<-merge(blast.output.length, contig.weights, by ="read", all.x=T)
     indx<-which(is.na(blast.length.weight[["weight"]]))

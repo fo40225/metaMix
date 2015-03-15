@@ -4,17 +4,17 @@
 \alias{parallel.temper.nucl.explicit}
 \title{Parallel Tempering MCMC}
 \usage{
-parallel.temper.nucl(step2, readSupport = 10, noChains = 12, seed = 1,
+parallel.temper.nucl(step2, readSupport = 30, noChains = 12, seed = 1,
   median.genome.length = 284332)
 
-parallel.temper.nucl.explicit(readSupport = 10, noChains = 12,
+parallel.temper.nucl.explicit(readSupport = 30, noChains = 12,
   pij.sparse.mat, read.weights, ordered.species, gen.prob.unknown, outDir,
   seed = 1, median.genome.length = 284332)
 }
 \arguments{
 \item{step2}{list. The output from reduce.space(). Alternatively, it can be a character string containing the path name of the ".RData" file  where step2 list was saved.}
 
-\item{readSupport}{The number of reads the user requires in order to believe in the presence of the species. It is used to compute the penalty factor. The default value is 10. We compute the logarithmic penalty value as the log-likelihood difference between two models: one where all N reads belong to the "unknown"  category and one where r reads have a perfect match to some unspecified species and the remaining reads belong to the "unknown"  category.}
+\item{readSupport}{The number of reads the user requires in order to believe in the presence of the species. It is used to compute the penalty factor. The default value  is 30. We compute the logarithmic penalty value as the log-likelihood difference between two models: one where all N reads belong to the "unknown"  category and one where r reads have a perfect match to some unspecified species and the remaining reads belong to the "unknown"  category.}
 
 \item{noChains}{The number of parallel chains to run. The default value is 12.}
 

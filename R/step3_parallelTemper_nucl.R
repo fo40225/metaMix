@@ -6,7 +6,7 @@ NULL
 #' @title parallel.temper.nucl
 #' @description Performs Parallel Tempering MCMC to explore the species state space. Two types of moves are implemented: a mutation step (within chain) and an exchange step (between neighboring chains). If working with BLASTx data, use parallel.temper().
 #' @param step2 list. The output from reduce.space(). Alternatively, it can be a character string containing the path name of the ".RData" file  where step2 list was saved.  
-#' @param readSupport The number of reads the user requires in order to believe in the presence of the species. It is used to compute the penalty factor. The default value is 10. We compute the logarithmic penalty value as the log-likelihood difference between two models: one where all N reads belong to the "unknown"  category and one where r reads have a perfect match to some unspecified species and the remaining reads belong to the "unknown"  category.
+#' @param readSupport The number of reads the user requires in order to believe in the presence of the species. It is used to compute the penalty factor. The default value  is 30. We compute the logarithmic penalty value as the log-likelihood difference between two models: one where all N reads belong to the "unknown"  category and one where r reads have a perfect match to some unspecified species and the remaining reads belong to the "unknown"  category.
 #' @param noChains The number of parallel chains to run. The default value is 12.
 #' @param seed Optional argument that sets the random seed (default is 1) to make results reproducible.
 #' @param median.genome.length To use in the penalty computation.
@@ -18,7 +18,7 @@ NULL
 #' @importFrom gtools rdirichlet
 ######################################################################################################################
 
-parallel.temper.nucl = function(step2, readSupport=10, noChains=12, seed=1, median.genome.length=284332){
+parallel.temper.nucl = function(step2, readSupport=30, noChains=12, seed=1, median.genome.length=284332){
 
   if (is.character(step2)) {
     load(step2)
@@ -428,7 +428,7 @@ parallel.temper.nucl = function(step2, readSupport=10, noChains=12, seed=1, medi
     
         }    ###end of for loop for internal iterations
   
-        resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted)
+        resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted, "readSupport"=readSupport.internal, "lpenalty"=lpenalty)
         return(resultSC)  
    
       }    ##end of singleChain function
@@ -483,7 +483,7 @@ parallel.temper.nucl = function(step2, readSupport=10, noChains=12, seed=1, medi
 #' @importFrom gtools rdirichlet
 ##########################-------------------------------------------- MAIN ---------------------------------------------------------------------------------
 
-parallel.temper.nucl.explicit<-function(readSupport=10, noChains=12, pij.sparse.mat, read.weights, ordered.species, gen.prob.unknown, outDir,seed = 1, median.genome.length=284332){
+parallel.temper.nucl.explicit<-function(readSupport=30, noChains=12, pij.sparse.mat, read.weights, ordered.species, gen.prob.unknown, outDir,seed = 1, median.genome.length=284332){
 
   set.seed(seed);
 #print(warnings())
@@ -877,7 +877,7 @@ singleChain <- function(TotalIter, exchangeInterval){
     
   }    ###end of for loop for internal iterations
   
-  resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted)
+  resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted, "readSupport"=readSupport, "lpenalty"=lpenalty)
   return(resultSC)  
    
 }    ##end of singleChain function

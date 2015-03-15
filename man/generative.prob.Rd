@@ -25,9 +25,9 @@ generative.prob.nucl(blast.output.file = NULL, read.length.file = 80,
 
 \item{outDir}{Output directory.}
 
-\item{blast.default}{logical. Is the input the default blast output tabular format? Default value is TRUE}
+\item{blast.default}{logical. Is the input the default blast output tabular format? Default value is TRUE. That means that the BLAST output file needs to have the following fields:Query id, Subject id, percent identity, alignment length, mismatches, gap openings, query start, query end, subject start, subject end, e-value, bit score.  Alternatively we can use the 'blast.default=FALSE' option, providing a custom blast output that has been produced using the option -outfmt '6 qacc qlen sacc slen stitle bitscore length pident evalue staxids'.}
 
-\item{genomeLength}{This is applicable only for generative.prob.nucl() . It is a file mapping each genome/nucleotide to its respective length. The file must be tab seperated and the first column the nucleotide gi identifier and the second the corresponding sequence length. It will be used to correct the Poisson probabilities between each read and genome.}
+\item{genomeLength}{This is applicable only for generative.prob.nucl() . It is a file mapping each genome/nucleotide to its respective length. The file must be tab seperated and the first column the nucleotide gi identifier (integer) and the second the corresponding sequence length (integer). It will be used to correct the Poisson probabilities between each read and genome.}
 }
 \value{
 step1: A list with five elements. The first one (pij.sparse.mat) is a sparse matrix with the generative probability between each read and each species. The second (ordered.species) is matrix containing all the potential species as recorded by BLAST, ordered by the number of reads. The third one (read.weights) is a data.frame mapping each contig to a weight which is essentially the number of reads that were used to assemble it. For unassembled reads the weight is equal to one. The fourth one is the generative probability for the unknown category (gen.prob.unknown), to be used in all subsequent steps. Finally we also record the output directory (outDir) where the results will be stored.

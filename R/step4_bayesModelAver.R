@@ -104,11 +104,45 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
         stop("The method did not find any present organisms in this dataset, defining as present species with posterior probability greater than 0.5. Maybe you used the wrong reference database to annotate your sequences?")
       }
   
-
       poster.probM<-as.data.frame(poster.prob)
       poster.probM$taxonID<-rownames(poster.probM)
       poster.prob.final<-merge(taxonNames, poster.probM, by.y="taxonID", by.x="taxonID", all.y=T)
 
+      
+      namesBF<-rownames(poster.probM)[!(rownames(poster.probM)%in%"unknown")]
+      ofInterestBF<-result$slave1$record[round(nIter/5):nIter,c(namesBF, "logL")]  ##burn-in 20%
+      BayesFactor<-matrix(0, ncol=2, nrow=(length(colnames(ofInterestBF))-1) )
+      BayesFactor<-as.data.frame(BayesFactor)
+      colnames(BayesFactor)<-c("taxonID", "log10BF")
+            
+      EMiter<-10
+      pij.sparse.unknown<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+
+
+      for ( i in 1:(length(colnames(ofInterestBF))-1) ){
+        BayesFactor[i,"taxonID"]<-colnames(ofInterestBF)[i]
+        if (!all(ofInterestBF[,colnames(ofInterestBF)[i]]==1)) {
+          BayesFactor[i,"log10BF"]<-logmean(ofInterestBF[which(ofInterestBF[,colnames(ofInterestBF)[i]]==1),"logL"])/log(10) -  logmean(ofInterestBF[which(ofInterestBF[,colnames(ofInterestBF)[i]]==0),"logL"])/log(10)
+        } else {
+          maxLog<- ofInterestBF[which(ofInterestBF[,"logL"]==max(ofInterestBF[which(ofInterestBF[,i]==1),"logL"]))[1],]
+          namesSp<-colnames(maxLog[which(maxLog==1)])
+          tempSet<- namesSp[!(namesSp %in% BayesFactor[i, "taxonID"])]
+          tentSet<- c(tempSet,"unknown")
+          noSpecies<-length(tentSet)
+          hyperP<-rep(1, noSpecies)
+          startW<-rdirichlet(1, hyperP)
+          output10Tent<-EM(pij=pij.sparse.unknown, iter=EMiter, species=tentSet, abund=startW, readWeights = read.weights)
+          #lpenalty<-(computePenalty(readSupport=result$readSupport, readWeights=read.weights, pUnknown=gen.prob.unknown))/log(10)
+          lpenalty<-(result$slave1$lpenalty)/log(10)
+          estimator <- (output10Tent$logL[EMiter,2])/log(10) + (noSpecies * lpenalty)
+          BayesFactor[i,"log10BF"]<-(maxLog[,"logL"])/log(10) -  estimator
+        }
+      }
+            
+
+      
+      
+      
       poster.prob.final[which(poster.prob.final[,"taxonID"]=="unknown"),"scientName"]<-"unknown"
   
       poster.prob<-poster.prob.final[order(-poster.prob.final[,"poster.prob"]),]
@@ -135,7 +169,9 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
       presentSpecies<-presentSpecies[as.numeric(order(presentSpecies[,"finalAssignments"]), decreasing=TRUE),]
   
   
-      presentSpecies.allInfo<-merge(presentSpecies, poster.probM, by.y="taxonID", by.x="taxonID", all.y=T)
+      presentSpecies.allInfo.temp<-merge(presentSpecies, poster.probM, by.y="taxonID", by.x="taxonID", all.y=T)
+      presentSpecies.allInfo<- merge(presentSpecies.allInfo.temp, BayesFactor, by.x ="taxonID", all.x=T)
+
       presentSpecies.allInfo<-presentSpecies.allInfo[order(as.numeric(presentSpecies.allInfo[,"finalAssignments"]), decreasing=TRUE),]
   
       
@@ -180,18 +216,21 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
         histograms.name<-paste(outDir, "/histograms_cdf.pdf", sep="")
         pdf(histograms.name)
         for (i in names(classProb)) {
-          temp<-data.frame(read=names(classProb[[i]]), prob=classProb[[i]], stringsAsFactors=F)
 
-          temp2<-merge(temp, read.weights, by= "read", all.x=T )
+          if ( length(classProb[[i]])>1 ){
+            temp<-data.frame(read=names(classProb[[i]]), prob=classProb[[i]], stringsAsFactors=F)
 
-          temp3<-temp2[rep(seq_len(nrow(temp2)), temp2$weight),c("read", "prob")]
+            temp2<-merge(temp, read.weights, by= "read", all.x=T )
+
+            temp3<-temp2[rep(seq_len(nrow(temp2)), temp2$weight),c("read", "prob")]  ### edw einai to provlima sth vignette
 
 
-          ploti<-ggplot(temp3, aes(x=get('prob'))) + stat_bin(aes(y=..count../sum(..count..), fill = ..count../sum(..count..)), breaks=c(0,0.1, 0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1) ) + stat_ecdf() + labs(list(title = paste(nrow(temp3),"reads assigned to ", i), x = "Classification probability", y = "Percentage of reads")) + guides(fill=guide_legend(title="Percentage of reads")) +  scale_x_continuous(breaks=c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1) ) + theme(plot.title = element_text(size = 12))
+            ploti<-ggplot(temp3, aes(x=get('prob'))) + stat_bin(aes(y=..count../sum(..count..), fill = ..count../sum(..count..)), breaks=c(0,0.1, 0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1) ) + stat_ecdf() + labs(list(title = paste(nrow(temp3),"reads assigned to ", i), x = "Classification probability", y = "Percentage of reads")) + guides(fill=guide_legend(title="Percentage of reads")) +  scale_x_continuous(breaks=c(0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1) ) + theme(plot.title = element_text(size = 12))
           #print(ploti)
           #suppressMessages(print(ploti))
 
-          suppressMessages(suppressWarnings(print(ploti)))
+            suppressMessages(suppressWarnings(print(ploti)))
+          }
         }
         dev.off()
 

@@ -24,8 +24,6 @@
 options(tidy=TRUE, width=80)
 @
 
-\section{What is new}
-  \textbf{Version 0.2:} Added Bayes Factor computation.
 
 \section{Installation}
 

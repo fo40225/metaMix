@@ -26,7 +26,7 @@ Gibbs = function(pij, iter, species, abund,  hyperParam, fast.rmultinom.weight, 
  
 
 #####Do at the same time STEP1 and STEP2
-######## STEP1.Calculate  zij {zij=pijwj/Σ_j(pijwj)}
+######## STEP1.Calculate  zij {zij=pijwj/sum_j(pijwj)}
 
 ######## STEP2. Sample from multinomial ~ Mult(draw=1,objects = 1, prob = zij)
  
@@ -35,11 +35,11 @@ Gibbs = function(pij, iter, species, abund,  hyperParam, fast.rmultinom.weight, 
     assignmWeighted<- assignm[rownames(readWeights),] * readWeights[,"weight"] ### multiply assignment (0,1) by read weight
 
 
-######## STEP3. Calculate nj=Σ_i(zij)
+######## STEP3. Calculate nj=sum_i(zij)
     nj <- colSums(assignmWeighted)
 
 
-######## STEP4. Generate w^(t) from π(w|z^(t)). Sample w from Dir~(a1+n1, ..., ak+nk)
+######## STEP4. Generate w^(t) from \pi (w|z^(t)). Sample w from Dirichlet (a1+n1, ..., ak+nk)
 ####new parameters for Dirichlet
     alpha<-nj + hyperParam
     abund<-rdirichlet(1,alpha)

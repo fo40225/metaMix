@@ -436,7 +436,7 @@ parallel.temper = function(step2, readSupport=10, noChains=12, seed=1){
     
         }    ###end of for loop for internal iterations
   
-        resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted)
+        resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted, "readSupport"=readSupport.internal, "lpenalty"=lpenalty)
         return(resultSC)  
    
       }    ##end of singleChain function
@@ -543,7 +543,7 @@ lpenalty<-computePenalty(readSupport=readSupport, readWeights=read.weights, pUnk
 EMiter<-10
 
 ### PT parameters
-exchangeInterval<-1                             ###leave chains run in parallel for that many iterations
+exchangeInterval<-1                             ###leave chains run in parallel for that many iterations before attempting exchange
 ExternIter<-5*(nrow(ordered.species))                              ### make chains communicate 1 times
 TotalIter<-exchangeInterval * ExternIter
 
@@ -593,7 +593,7 @@ singleChain <- function(TotalIter, exchangeInterval){
   
   presentSpecies<-"unknown"   ## create object that receives the species deemed as present, from previous (swapInterv*j) iteration.
   abundUsedSp<-c("unknown"=1)
-  
+
   ### Create 2 lists. One that holds species names and one with their abundances. Each list has 2 elements. Element1: present species  and Element2: tentative species being explored in current iteration.
   speciestoUse<-list("presentSp"=presentSpecies, "tentativeSp"=NULL)
   abundUsedSpecies<-list("presentSp"= abundUsedSp, "tentativeSp"=NULL)
@@ -883,7 +883,7 @@ singleChain <- function(TotalIter, exchangeInterval){
     
   }    ###end of for loop for internal iterations
   
-  resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted)
+  resultSC<-list("estimNew"=estimNew, "record"=record, "usedSp"=speciestoUse[[1]], "abundUsedSp" = abundUsedSpecies[[1]], "swaps.attempt"=swaps.attempted, "swaps.accept"=swaps.accepted, "readSupport"=readSupport, "lpenalty"=lpenalty)
   return(resultSC)  
    
 }    ##end of singleChain function

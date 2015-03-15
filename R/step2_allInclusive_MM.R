@@ -9,6 +9,7 @@ NULL
 #' @param step1 list. The output from generative.prob() (or generative.prob.nucl(), that is the first step of the pipeline. Alternatively, it can be a character string containing the path name of the ".RData" file where step1 list was saved.
 #' @param read.cutoff  numeric vector. This is the used to decide which species to retain for the subsequent MCMC exploration. Default value is 1, i.e keep all species that have at least one read assigned to them. If this number is still in the low thousands as opposed to the low hundreds the user may set this to a higher number, such as 10.
 #' @param EMiter  Number of iterations for the EM algorithm. Default value is 500.
+#' @param seed Optional argument that sets the random seed (default is 1) to make results reproducible.
 #' @return step2: A list with six elements. The first one (ordered.species) is a data.frame containing all the non-empty species categories, as decided by the all inclusive mixture model, ordered by the number of reads assigned to them. The second one (pij.sparse.mat) is a sparse matrix with the generative probability between each read and each species. read.weights, gen.prob.unknown, outDir are all carried forward from the "step1" object. Finally outputEM which records the species abundances throughout the EM iterations (not used in step3 and step4).
 #' @keywords reduce.space
 #' @export reduce.space
@@ -27,7 +28,7 @@ NULL
 #' }
 ######################################################################################################################
 
-reduce.space = function(step1, read.cutoff=1, EMiter=250){
+reduce.space = function(step1, read.cutoff=1, EMiter=500, seed=1){
 
   if (is.character(step1)) {     
     load(step1)
@@ -41,8 +42,9 @@ reduce.space = function(step1, read.cutoff=1, EMiter=250){
     stop()    
   }  else {
 
-    reduce.space.wrapped = function(pij.sparse.mat=step1$pij.sparse.mat, ordered.species=step1$ordered.species, read.weights=step1$read.weights, outDir=step1$outDir, gen.prob.unknown=step1$gen.prob.unknown, read.cutoff.internal=read.cutoff, EMiter.internal=EMiter){
-    
+    reduce.space.wrapped = function(pij.sparse.mat=step1$pij.sparse.mat, ordered.species=step1$ordered.species, read.weights=step1$read.weights, outDir=step1$outDir, gen.prob.unknown=step1$gen.prob.unknown, read.cutoff.internal=read.cutoff, EMiter.internal=EMiter, seed.internal=seed){
+
+      set.seed(seed.internal);
       tentative.species<-colnames(pij.sparse.mat)
       noSpecies<-length(tentative.species)
 
@@ -116,8 +118,9 @@ reduce.space = function(step1, read.cutoff=1, EMiter=250){
 #' @importFrom gtools rdirichlet
 ##############################################################################################################################################################)
 
-reduce.space.explicit = function(pij.sparse.mat, ordered.species, read.weights, outDir, gen.prob.unknown, read.cutoff=1, EMiter=500){
-  
+reduce.space.explicit = function(pij.sparse.mat, ordered.species, read.weights, outDir, gen.prob.unknown, read.cutoff=1, EMiter=500, seed=1){
+
+  set.seed(seed);
   tentative.species<-colnames(pij.sparse.mat)
   noSpecies<-length(tentative.species)
 
