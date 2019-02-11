@@ -8,11 +8,16 @@ NULL
 #' @param step3 list. The output from parallel.temper(), i.e the third step of the pipeline.  Alternatively, it can be a character string containing the path name of the ".RData" file  where step3 list was saved.         
 #' @param step2 list. The output from reduce.space(), i.e the second step of the pipeline.  Alternatively, it can be a character string containing the path name of the ".RData" file  where step2 list was saved.         
 #' @param taxon.name.map  The 'names.dmp' taxonomy names file, mapping each taxon identifier to the corresponding scientific name. It can be downloaded from  \url{ftp://ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz}
-#' @param poster.prob.thr Posterior probability of presence of species threshold for reporting in the species summary. 
+#' @param poster.prob.thr Posterior probability of presence of species threshold for reporting in the species summary.
+#' @param burnin Percentage of burn in iterations, default value is 0.4
 #' @keywords bayes.model.aver
 #' @export bayes.model.aver
 #' @import Matrix ggplot2 data.table
 #' @importFrom gtools rdirichlet
+#' @importFrom grDevices dev.off
+#' @importFrom grDevices pdf
+#' @importFrom graphics plot
+#' @importFrom utils write.table
 #' @useDynLib metaMix
 #' @examples
 #' ## See vignette for more details
@@ -30,7 +35,7 @@ NULL
 #' }                                                      
 ######################################################################################################################                                
 
-bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=0.9){
+bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=0.9, burnin=0.4){
 
   if (is.character(step2)) {
     load(step2)
@@ -70,7 +75,7 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
        
       nIter<- nrow(result$slave1$record)
 
-      pijSparseUnknown<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+      pijSparseUnknown<-cbind(pij.sparse.mat, "unknown"=gen.prob.unknown)
 
 
  #     message("Associate taxonIDs with scientific names: reading \"names.dmp\" can take a few minutes")
@@ -82,7 +87,7 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
     
       taxonNames<-as.data.frame(taxonNames)
   
-      ofInterest<-result$slave1$record[round(nIter/5):nIter,4:(ncol(result$slave1$record)-1)]  ##burn-in 20%
+      ofInterest<-result$slave1$record[round(nIter*burnin):nIter,4:(ncol(result$slave1$record)-1)]  ##burn-in 40%
       present.probabilities<- round(apply(ofInterest, MARGIN=2, function(x) sum(x)/length(x)), digits=2)
       poster.prob.all<-present.probabilities[present.probabilities>0]
 
@@ -101,41 +106,53 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
 
 
       if (length(present.probabilities[present.probabilities>0.5])==1) {                   
-        stop("The method did not find any present organisms in this dataset, defining as present species with posterior probability greater than 0.5. Maybe you used the wrong reference database to annotate your sequences?")
+        stop("The method did not find any present organisms in this dataset, defined as present species with posterior probability greater than 0.5. Maybe you used the wrong reference database to annotate your sequences?")
       }
   
       poster.probM<-as.data.frame(poster.prob)
       poster.probM$taxonID<-rownames(poster.probM)
       poster.prob.final<-merge(taxonNames, poster.probM, by.y="taxonID", by.x="taxonID", all.y=T)
 
+
+      ### compute Bayes Factor
       
       namesBF<-rownames(poster.probM)[!(rownames(poster.probM)%in%"unknown")]
-      ofInterestBF<-result$slave1$record[round(nIter/5):nIter,c(namesBF, "logL")]  ##burn-in 20%
+      ofInterestBF<-result$slave1$record[round(nIter*burnin):nIter,c(namesBF, "logL")]  ##burn-in 20%
       BayesFactor<-matrix(0, ncol=2, nrow=(length(colnames(ofInterestBF))-1) )
       BayesFactor<-as.data.frame(BayesFactor)
       colnames(BayesFactor)<-c("taxonID", "log10BF")
             
       EMiter<-10
-      pij.sparse.unknown<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+      pij.sparse.unknown<-cbind(pij.sparse.mat, "unknown"=gen.prob.unknown)
 
-
+      
+    
       for ( i in 1:(length(colnames(ofInterestBF))-1) ){
         BayesFactor[i,"taxonID"]<-colnames(ofInterestBF)[i]
-        if (!all(ofInterestBF[,colnames(ofInterestBF)[i]]==1)) {
-          BayesFactor[i,"log10BF"]<-logmean(ofInterestBF[which(ofInterestBF[,colnames(ofInterestBF)[i]]==1),"logL"])/log(10) -  logmean(ofInterestBF[which(ofInterestBF[,colnames(ofInterestBF)[i]]==0),"logL"])/log(10)
+
+        if (length(colnames(ofInterestBF))-1==1)  {
+          onlyUnknown.logL<- sum(read.weights[,"weight"])*log(gen.prob.unknown)
+           
+          BayesFactor[i,"log10BF"]<-logmean(ofInterestBF[which(ofInterestBF[,colnames(ofInterestBF)[i]]==1),"logL"])/log(10) -  onlyUnknown.logL
+         
         } else {
-          maxLog<- ofInterestBF[which(ofInterestBF[,"logL"]==max(ofInterestBF[which(ofInterestBF[,i]==1),"logL"]))[1],]
-          namesSp<-colnames(maxLog[which(maxLog==1)])
-          tempSet<- namesSp[!(namesSp %in% BayesFactor[i, "taxonID"])]
-          tentSet<- c(tempSet,"unknown")
-          noSpecies<-length(tentSet)
-          hyperP<-rep(1, noSpecies)
-          startW<-rdirichlet(1, hyperP)
-          output10Tent<-EM(pij=pij.sparse.unknown, iter=EMiter, species=tentSet, abund=startW, readWeights = read.weights)
+          
+          if (!all(ofInterestBF[,colnames(ofInterestBF)[i]]==1)) {
+            BayesFactor[i,"log10BF"]<-logmean(ofInterestBF[which(ofInterestBF[,colnames(ofInterestBF)[i]]==1),"logL"])/log(10) -  logmean(ofInterestBF[which(ofInterestBF[,colnames(ofInterestBF)[i]]==0),"logL"])/log(10)
+          } else {
+            maxLog<- ofInterestBF[which(ofInterestBF[,"logL"]==max(ofInterestBF[which(ofInterestBF[,i]==1),"logL"]))[1],]
+            namesSp<-colnames(maxLog[which(maxLog==1)])
+            tempSet<- namesSp[!(namesSp %in% BayesFactor[i, "taxonID"])]
+            tentSet<- c(tempSet,"unknown")
+            noSpecies<-length(tentSet)
+            hyperP<-rep(1, noSpecies)
+            startW<-rdirichlet(1, hyperP)
+            output10Tent<-EM(pij=pij.sparse.unknown, iter=EMiter, species=tentSet, abund=startW, readWeights = read.weights)
           #lpenalty<-(computePenalty(readSupport=result$readSupport, readWeights=read.weights, pUnknown=gen.prob.unknown))/log(10)
-          lpenalty<-(result$slave1$lpenalty)/log(10)
-          estimator <- (output10Tent$logL[EMiter,2])/log(10) + (noSpecies * lpenalty)
-          BayesFactor[i,"log10BF"]<-(maxLog[,"logL"])/log(10) -  estimator
+            lpenalty<-(result$slave1$lpenalty)/log(10)
+            estimator <- (output10Tent$logL[EMiter,2])/log(10) + (noSpecies * lpenalty)
+            BayesFactor[i,"log10BF"]<-(maxLog[,"logL"])/log(10) -  estimator
+          }
         }
       }
             
@@ -240,9 +257,9 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
         plot(result$slave1$record[1:nIter,"logL"], type="l",  xlab="All iterations", ylab="Log-likelihood", main="Parallel Tempering - Coldest Chain", lwd=1.5)
         dev.off()
 
-        traceplot2<-paste(outDir, "/logLikelihood_traceplot_80.pdf", sep="")
+        traceplot2<-paste(outDir, "/logLikelihood_traceplot_60.pdf", sep="")
         pdf(traceplot2)
-        plot(result$slave1$record[(nIter/5):nIter,"logL"], type="l", col="dodgerblue", xlab="Last 80% of iterations", ylab="Log-likelihood", main="Parallel Tempering - Coldest Chain", lwd=1.5)
+        plot(result$slave1$record[(nIter*burnin):nIter,"logL"], type="l", col="dodgerblue", xlab="Last 60% of iterations", ylab="Log-likelihood", main="Parallel Tempering - Coldest Chain", lwd=1.5)
         dev.off()
 
         
@@ -285,7 +302,7 @@ bayes.model.aver = function(step2, step3,  taxon.name.map=NULL, poster.prob.thr=
 #' @useDynLib metaMix
 ##########################-------------------------------------------- MAIN ---------------------------------------------------------------------------------                     
 
-bayes.model.aver.explicit<-function(result, pij.sparse.mat, read.weights, outDir, gen.prob.unknown,  taxon.name.map=NULL, poster.prob.thr=0.9){
+bayes.model.aver.explicit<-function(result, pij.sparse.mat, read.weights, outDir, gen.prob.unknown,  taxon.name.map=NULL, poster.prob.thr=0.9, burnin=0.4){
 
   fast.rmultinom.weight <- function(proba.matrix, z.matrix, seed, weights) {
     return( .Call("C_rmultinom_weight", proba.matrix, z.matrix, weights, PACKAGE='metaMix') )
@@ -300,7 +317,7 @@ bayes.model.aver.explicit<-function(result, pij.sparse.mat, read.weights, outDir
        
   nIter<- nrow(result$slave1$record)
 
-  pijSparseUnknown<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+  pijSparseUnknown<-cbind(pij.sparse.mat, "unknown"=gen.prob.unknown)
 
 
   message("Associate taxonIDs with scientific names: reading \"names.dmp\" could take a couple of minutes")
@@ -312,7 +329,7 @@ bayes.model.aver.explicit<-function(result, pij.sparse.mat, read.weights, outDir
     
   taxonNames<-as.data.frame(taxonNames)
   
-  ofInterest<-result$slave1$record[round(nIter/5):nIter,4:(ncol(result$slave1$record)-1)]  ##burn-in 20%
+  ofInterest<-result$slave1$record[round(nIter*burnin):nIter,4:(ncol(result$slave1$record)-1)]  ##burn-in 20%
   present.probabilities<- round(apply(ofInterest, MARGIN=2, function(x) sum(x)/length(x)), digits=2)
   poster.prob.all<-present.probabilities[present.probabilities>0]
 
@@ -433,7 +450,7 @@ bayes.model.aver.explicit<-function(result, pij.sparse.mat, read.weights, outDir
 
     traceplot2<-paste(outDir, "/logLikelihood_traceplot_80.pdf", sep="")
     pdf(traceplot2)
-    plot(result$slave1$record[(nIter/5):nIter,"logL"], type="l", col="dodgerblue", xlab="Last 80% of iterations", ylab="Log-likelihood", main="Parallel Tempering - Coldest Chain", lwd=1.5)
+    plot(result$slave1$record[(nIter*burnin):nIter,"logL"], type="l", col="dodgerblue", xlab="Last 80% of iterations", ylab="Log-likelihood", main="Parallel Tempering - Coldest Chain", lwd=1.5)
     dev.off()
     
     #message("Results in ", summary.name)

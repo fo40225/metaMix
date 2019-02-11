@@ -16,6 +16,7 @@ NULL
 #' @export parallel.temper.nucl
 #' @import Rmpi Matrix
 #' @importFrom gtools rdirichlet
+#' @importFrom stats runif
 ######################################################################################################################
 
 parallel.temper.nucl = function(step2, readSupport=30, noChains=12, seed=1, median.genome.length=284332){
@@ -69,12 +70,13 @@ parallel.temper.nucl = function(step2, readSupport=30, noChains=12, seed=1, medi
           }
           print("Please use mpi.quit() to quit R")
           .Call("mpi_finalize", PACKAGE='metaMix')
+
         }
       }
 
 
 
-      pij.sparse.mat<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+      pij.sparse.mat<-cbind(pij.sparse.mat, "unknown"=gen.prob.unknown)
 
       gc()
 
@@ -458,7 +460,7 @@ parallel.temper.nucl = function(step2, readSupport=30, noChains=12, seed=1, medi
       }
 
       mpi.close.Rslaves(dellog=FALSE)
-     # mpi.quit()
+      mpi.quit()
   
       return(step3)
     }
@@ -518,12 +520,13 @@ mpi.spawn.Rslaves(nslaves = noChains)  #number of slaves to spawn, should be equ
     }
     print("Please use mpi.quit() to quit R")
     .Call("mpi_finalize", PACKAGE='metaMix')
+
   }
 }
 
 
 
-pij.sparse.mat<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+pij.sparse.mat<-cbind(pij.sparse.mat, "unknown"=gen.prob.unknown)
 
 gc()
 
@@ -908,8 +911,11 @@ step3<-list("result"=result, "duration"=duration)
 
   
 mpi.close.Rslaves(dellog=FALSE)
-#mpi.quit()
+#mpi.quit() ## terminates MPI execution environment and quits R
+  mpi.exit()  ##terminates MPI execution environment and detaches the library Rmpi. After that, you  can still work on R
 
+  
+  
 return(step3)
 }
 

@@ -24,8 +24,14 @@
 options(tidy=TRUE, width=80)
 @
 
+
+
 \section{What is new}
   \textbf{Version 0.2:} Added Bayes Factor computation.
+
+  \textbf{Version 0.3:} Allow user to specify number of MCMC iterations (Step 3) and Burn-in percentage (Step 4). Due to NCBI phasing out GI numbers, added support for protein accession identifier file for mapping to taxon (STEP1).  Fixed bug in step4 for Bayes Factor calculation when only one species is present, that is only human and unknown. Also fixed bug with semi-colon separated taxonids in custom BLAST format, as well as NAs (STEP 1). Replaced deprecated cBind function with cbind.
+
+
 
 \section{Installation}
 
@@ -270,6 +276,9 @@ We can also see that between iterations 13 and 14 an exchange of the sets of spe
 At iter. 13 species 2 was present, while at the next one, it no longer is there. That means that the attempt at swapping the values of the two neighboring chains was successful. 
 This information is also recorded, i.e how many swaps were attempted and how many accepted.
 
+Each chain will produce a log file that will be printed in your working directory. 
+
+
 \subsection*{Step4}
 
  Having explored the different possible models, the final step is to perform  model averaging. 
@@ -315,17 +324,15 @@ plot(PTresult$result$slave1$record[(nIter/5):nIter,'logL'], type='l', col='dodge
 
 \section{Submit jobs on cluster compute servers}
 In order to run steps 1, 2 and 4 of metaMix (i.e \verb!generative.prob!, \verb!reduce.space!, \verb!bayes.model.aver!) efficiently, these should be submitted as jobs to a compute cluster. 
-In our experience,  4G of memory, 1 hour of wall clock time and 1 processor should be plenty.
-
-In order to run the parallel tempering efficiently,  we need at least 12 parallel chains, each with at least 1G-2G of RAM. 
+In our experience,  4G of memory, 1 hour of wall clock time and 1 processor should be plenty. 
+In order to run the parallel tempering efficiently (step3),  we need at least 12 parallel chains. I usually request 6 or 12 threads, each with 2G of RAM. 
 The wall clock time depends on how many iterations will be performed. 
-Also a larger number of reads mean that the computations will become slower. 
-We typically ask for 12 hours to be on the safe side.
+A larger number of reads mean that the computations will become slower. 
 
+We typically submit all 4 steps in one go using one submission script. 
+I usually assess the size of the dataset, but 12 hours for all 4 steps should be safe.
 
-
-This is a sample submission script for the third step.
-It requests 12 processors on 1 node for 12 hours.
+This is a sample submission script, it requests 6 processors on 1 node for 12 hours (more processors, less time necessary).
 
 \begin{verbatim}
 #!/bin/bash
@@ -333,17 +340,30 @@ It requests 12 processors on 1 node for 12 hours.
 #$ -o cluster/out
 #$ -e cluster/error
 #$ -cwd
-#$ -pe smp 12
-#$ -l tmem=1.1G,h_vmem=1.1G
+#$ -pe smp 6
+#$ -l tmem=2G,h_vmem=2G
 #$ -l h_rt=12:00:00
 #$ -V
 #$ -R y
 
-mpirun -np 1 R-3.0.1/bin/R --slave CMD BATCH --no-save --no-restore step3.R
+mpirun -np 1 R-3.0.1/bin/R --slave CMD BATCH --no-save --no-restore allsteps.R
 \end{verbatim}
 
-in step3.R,  we simply load the object produced from \verb!reduce.space! and then call \verb!generative.prob!.
-Each chain will produce a log file that will be printed in your working directory
+an example allsteps.R looks like this:
+\begin{verbatim}
+library(metaMix)
+
+step1<-generative.prob(blast.output.file="sample_diamond.tab",  read.length.file="read_lengths.tab", contig.weight.file="contig_weights.tab",  outDir="./", gi.taxon.file="gi_taxid_prot.dmp", blast.default=TRUE, gi.or.prot="gi")
+
+step2<-reduce.space(step1="step1.RData")             
+
+step3<-parallel.temper(step2="step2.RData")
+
+step4<-bayes.model.aver(step2="step2.RData", step3="step3.RData", taxon.name.map="names.dmp")
+
+
+\end{verbatim}
+
 
 
 \section{Technical information about the R session}

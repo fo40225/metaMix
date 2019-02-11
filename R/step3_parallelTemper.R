@@ -7,6 +7,8 @@ NULL
 #' @description Performs Parallel Tempering MCMC to explore the species state space. Two types of moves are implemented: a mutation step (within chain) and an exchange step (between neighboring chains).  If working with BLASTn data, use parallel.temper.nucl().
 #' @param readSupport The number of reads the user requires in order to believe in the presence of the species. It is used to compute the penalty factor. The default value is 10. We compute the logarithmic penalty value as the log-likelihood difference between two models: one where all N reads belong to the "unknown"  category and one where r reads have a perfect match to some unspecified species and the remaining reads belong to the "unknown"  category.  
 #' @param noChains The number of parallel chains to run. The default value is 12.
+#' @param iter The number of MCMC iterations. The default behavior of metaMix is to take into account the number of potential species after step 2 in order in order to compute the number of MCMC iterations. By default metaMix will choose the greater value between a) the user-specified value for iter and b) the product of (5 * the number of potential species). This behavior can by bypassed by setting the bypass parameter to TRUE. Then the MCMC will run for exactly the user-specified number iter.
+#' @param bypass A logical flag. If set to TRUE the MCMC will run for exactly "iter" iterations. If FALSE, metaMix defaults to choosing the greater value between "iter" and "5*(nrow(ordered.sepcies))".
 #' @param seed Optional argument that sets the random seed (default is 1) to make results reproducible.
 #' @param step2 list. The output from reduce.space(). Alternatively, it can be a character string containing the path name of the ".RData" file  where step2 list was saved.
 #' @return step3: A list with two elements. The first one (result) is a list that records MCMC information from each parallel chain.  The second one (duration) records how much time the MCMC exploration took.
@@ -15,6 +17,7 @@ NULL
 #' @export parallel.temper
 #' @import Rmpi Matrix
 #' @importFrom gtools rdirichlet
+#' @importFrom stats runif
 #' @examples
 #' ## See vignette for more details
 #'
@@ -27,7 +30,7 @@ NULL
 #' step3 <- parallel.temper(step2="/pathtoFile/step2.RData")
 #' }
 ######################################################################################################################
-parallel.temper = function(step2, readSupport=10, noChains=12, seed=1){
+parallel.temper = function(step2, readSupport=10, noChains=12, seed=1, iter=500, bypass=FALSE){
 
   if (is.character(step2)) {
     load(step2)
@@ -42,7 +45,9 @@ parallel.temper = function(step2, readSupport=10, noChains=12, seed=1){
     stop()
   }  else {
     
-    parallel.temper.wrapped<-function(readSupport.internal=readSupport, noChains.internal=noChains, pij.sparse.mat=step2$pij.sparse.mat, read.weights=step2$read.weights, ordered.species=step2$ordered.species, gen.prob.unknown=step2$gen.prob.unknown, outDir=step2$outDir, seed.internal=seed){
+#    parallel.temper.wrapped<-function(readSupport.internal=readSupport, noChains.internal=noChains, pij.sparse.mat=step2$pij.sparse.mat, read.weights=step2$read.weights, ordered.species=step2$ordered.species, gen.prob.unknown=step2$gen.prob.unknown, outDir=step2$outDir, seed.internal=seed){
+
+    parallel.temper.wrapped<-function(readSupport.internal=readSupport, noChains.internal=noChains, pij.sparse.mat=step2$pij.sparse.mat, read.weights=step2$read.weights, ordered.species=step2$ordered.species, gen.prob.unknown=step2$gen.prob.unknown, outDir=step2$outDir, seed.internal=seed, iter.internal=iter){
 
       set.seed(seed.internal);
                                         #print(warnings())
@@ -77,12 +82,13 @@ parallel.temper = function(step2, readSupport=10, noChains=12, seed=1){
           }
           print("Please use mpi.quit() to quit R")
           .Call("mpi_finalize", PACKAGE='metaMix')
+
         }
       }
 
 
 
-      pij.sparse.mat<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+      pij.sparse.mat<-cbind(pij.sparse.mat, "unknown"=gen.prob.unknown)
 
 #rm(step2)
       gc()
@@ -97,7 +103,17 @@ parallel.temper = function(step2, readSupport=10, noChains=12, seed=1){
 
 ### PT parameters
       exchangeInterval<-1                             ###leave chains run in parallel for that many iterations
-      ExternIter<-5*(nrow(ordered.species))                              ### make chains communicate 1 times
+
+      if (bypass==FALSE){
+        if (iter.internal > 5*(nrow(ordered.species))) {    ### choose the number of iterations that is greater between 1) the user-defined number 2) the product of the number of potential species times 5
+          ExternIter<-iter.internal
+        } else {
+          ExternIter<-5*(nrow(ordered.species))                              ### make chains communicate 1 times
+        }
+          } else {
+            ExternIter<-iter.internal
+          }
+          
       TotalIter<-exchangeInterval * ExternIter
 
 ##Tempering Vector --Power Decay
@@ -467,8 +483,9 @@ parallel.temper = function(step2, readSupport=10, noChains=12, seed=1){
 
   
       mpi.close.Rslaves(dellog=FALSE)
-   #   mpi.quit()
-
+      #mpi.quit() ## terminates MPI execution environment and quits R
+#      mpi.exit()  ##terminates MPI execution environment and detaches the library Rmpi. After that, you  can still work on R, problems with detaching Rmpi
+      mpi.finalize()
       return(step3)
     }
     parallel.temper.wrapped()
@@ -489,7 +506,7 @@ parallel.temper = function(step2, readSupport=10, noChains=12, seed=1){
 #' @import Rmpi Matrix
 #' @importFrom gtools rdirichlet
 
-parallel.temper.explicit<-function(readSupport=10, noChains=12, pij.sparse.mat, read.weights, ordered.species, gen.prob.unknown, outDir, seed = 1){
+parallel.temper.explicit<-function(readSupport=10, noChains=12, pij.sparse.mat, read.weights, ordered.species, gen.prob.unknown, outDir, seed = 1, iter=500, bypass=FALSE){
 
   set.seed(seed);
 #print(warnings())
@@ -524,12 +541,13 @@ mpi.spawn.Rslaves(nslaves = noChains)  #number of slaves to spawn, should be equ
     }
     print("Please use mpi.quit() to quit R")
     .Call("mpi_finalize", PACKAGE='metaMix')
+
   }
 }
 
 
 
-pij.sparse.mat<-cBind(pij.sparse.mat, "unknown"=gen.prob.unknown)
+pij.sparse.mat<-cbind(pij.sparse.mat, "unknown"=gen.prob.unknown)
 
 #rm(step2)
 gc()
@@ -544,9 +562,21 @@ EMiter<-10
 
 ### PT parameters
 exchangeInterval<-1                             ###leave chains run in parallel for that many iterations before attempting exchange
-ExternIter<-5*(nrow(ordered.species))                              ### make chains communicate 1 times
+#ExternIter<-5*(nrow(ordered.species))                              ### make chains communicate 1 times
+
+  if (bypass==FALSE){
+    if (iter > 5*(nrow(ordered.species))) {    ### choose the number of iterations that is greater between 1) the user-defined number 2) the product of the number of potential species times 5
+      ExternIter<-iter
+    } else {
+      ExternIter<-5*(nrow(ordered.species))                              ### make chains communicate 1 times
+    }
+      } else {
+        ExternIter<-iter
+      }
+
 TotalIter<-exchangeInterval * ExternIter
 
+  
 ##Tempering Vector --Power Decay
 temper<-vector()
 K<-0.001
@@ -914,7 +944,9 @@ step3<-list("result"=result, "duration"=duration)
 
   
 mpi.close.Rslaves(dellog=FALSE)
-#mpi.quit()
-
+##  mpi.quit() ## terminates MPI execution environment and quits R
+##  mpi.exit()  ##terminates MPI execution environment and detaches the library Rmpi. After that, you  can still work on R
+  mpi.finalize()
+  
 return(step3)
 }

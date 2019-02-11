@@ -39,7 +39,7 @@ Gibbs = function(pij, iter, species, abund,  hyperParam, fast.rmultinom.weight, 
     nj <- colSums(assignmWeighted)
 
 
-######## STEP4. Generate w^(t) from \pi (w|z^(t)). Sample w from Dirichlet (a1+n1, ..., ak+nk)
+######## STEP4. Generate w^(t) from \pi(w|z^(t)). Sample w from Dir~(a1+n1, ..., ak+nk)
 ####new parameters for Dirichlet
     alpha<-nj + hyperParam
     abund<-rdirichlet(1,alpha)

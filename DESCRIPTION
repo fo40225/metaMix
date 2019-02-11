@@ -1,9 +1,9 @@
 Package: metaMix
 Title: Bayesian Mixture Analysis for Metagenomic Community Profiling
-Version: 0.2
+Version: 0.3
 Author: Sofia Morfopoulou <sofia.morfopoulou.10@ucl.ac.uk>
 Maintainer: Sofia Morfopoulou <sofia.morfopoulou.10@ucl.ac.uk>
-Depends: R (>= 3.0.1)
+Depends: R (>= 3.2)
 Imports: data.table (>= 1.9.2), Matrix, gtools, Rmpi, ggplot2
 Suggests: knitr
 VignetteBuilder: knitr
@@ -15,7 +15,9 @@ Description: Resolves complex metagenomic mixtures by analysing
 License: GPL-3
 LazyData: true
 SystemRequirements: Open MPI (>=1.4.3)
-Packaged: 2015-03-15 12:32:53 UTC; psofaki
+RoxygenNote: 6.1.1
+Encoding: UTF-8
 NeedsCompilation: yes
+Packaged: 2019-02-07 15:41:40 UTC; sophia
 Repository: CRAN
-Date/Publication: 2015-03-15 14:03:01
+Date/Publication: 2019-02-11 16:20:03 UTC
