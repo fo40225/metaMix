@@ -460,7 +460,8 @@ parallel.temper.nucl = function(step2, readSupport=30, noChains=12, seed=1, medi
       }
 
       mpi.close.Rslaves(dellog=FALSE)
-      mpi.quit()
+      # mpi.quit()
+      mpi.finalize()
   
       return(step3)
     }
@@ -912,7 +913,8 @@ step3<-list("result"=result, "duration"=duration)
   
 mpi.close.Rslaves(dellog=FALSE)
 #mpi.quit() ## terminates MPI execution environment and quits R
-  mpi.exit()  ##terminates MPI execution environment and detaches the library Rmpi. After that, you  can still work on R
+  # mpi.exit()  ##terminates MPI execution environment and detaches the library Rmpi. After that, you  can still work on R
+  mpi.finalize()
 
   
   
